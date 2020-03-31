@@ -27,7 +27,7 @@ h1 {
     display: block;
 }
 
-p {
+.page {
     max-width: 100ex;
 }
 

@@ -5,6 +5,12 @@ html, body {
 }
 
 h1 {
+    padding-top: 1ex;
+    padding-bottom: 1ex;
+}
+
+h2 {
+    padding-top: 1ex;
     padding-bottom: 1ex;
 }
 
@@ -174,4 +180,38 @@ app {
         /* Never collapse the sidebar for wide screens */
         display: block;
     }
+}
+
+.breadcrumbs
+{
+    font-size: large;
+}
+
+.breadcrumbs > a
+{
+    white-space: nowrap;
+    padding-right: 1.2ex;
+    text-decoration: none;
+}
+
+.breadcrumbs > a:after
+{
+    content: ">";
+    position: relative;
+    left: 1ex;
+}
+
+.buy-subscription
+{
+    padding: 1ex;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.price
+{
+    font-size: large;
+    text-align: right;
+    white-space: nowrap;
+    padding: 1ex;
 }

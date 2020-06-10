@@ -1,0 +1,63 @@
+﻿@page "/docs/morpher-ru/ws/3/{feature}"
+
+<div class="breadcrumbs">
+    <a href='#'>Разработчики</a> 
+    <a href='#'>Морфер.ру</a>
+    <a href='#'>Веб-сервис «Морфер»</a>
+    <a href='#'>3.0 (текущая версия)</a>
+</div>
+
+<h1>Функция @Feature</h1>
+
+<!-- markdown -->
+
+<div class="panel panel-default">
+    
+    <div class="buy-subscription panel-body">
+
+        <div>Подписка на
+
+            <select>
+                <option>1 месяц</option>
+                <option>2 месяца</option>
+                <option>3 месяца</option>
+                <option>6 месяцев</option>
+                <option>12 месяцев</option>
+            </select>
+
+            с лимитом
+
+            <select>
+                <option>1000</option>
+                <option>10 000</option>
+                <option>100 000</option>
+            </select>
+
+            запросов в сутки
+
+        </div>
+
+        <span class="price">700 ₽</span>
+
+        <a class="btn btn-primary" role="button" href="get-subscription">Купить подписку</a>
+
+    </div>
+</div>
+    
+<h2>
+    Другие функции веб-сервиса «Морфер»
+</h2>
+
+<ul>
+
+    <li><a href='#'>Склонение по падежам на украинском языке</a></li>
+    <li><a href='#'>Склонение по падежам на казахском языке</a></li>
+
+</ul>
+
+
+@code {
+    [Parameter]
+    public string Feature { get; set; }
+}
+

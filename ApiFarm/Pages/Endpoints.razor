@@ -1,0 +1,13 @@
+﻿@page "/docs/morpher-ru/ws/3/{path}/{method}"
+
+<h1>@Method /@Path</h1>
+
+<!-- markdown -->
+
+@code {
+    [Parameter]
+    public string Path { get; set; }
+    [Parameter]
+    public string Method { get; set; }
+}
+

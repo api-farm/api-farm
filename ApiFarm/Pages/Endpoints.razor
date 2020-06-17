@@ -2,12 +2,24 @@
 
 <h1>@Method /@Path</h1>
 
-<!-- markdown -->
+@((MarkupString) HtmlFromEndpoints)
+@* https://localhost:5001/docs/morpher-ru/ws/3/russian/declension *@
 
 @code {
+
     [Parameter]
     public string Path { get; set; }
+
     [Parameter]
     public string Method { get; set; }
-}
 
+    public string HtmlFromEndpoints = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var md = await MarkdownDownloaderSingleton.Instance;
+
+        var targetMd = md.MarkdownData.Where(v => v.filePath.Contains(Path) && v.filePath.Contains(Method));
+        HtmlFromEndpoints = targetMd.FirstOrDefault()?.html;
+    }
+}

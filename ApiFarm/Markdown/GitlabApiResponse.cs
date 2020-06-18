@@ -2,15 +2,9 @@
 
 namespace ApiFarm
 {
-    //classes for json deserialization from gitlab api
-    public class ClassForGitlabApiResponse
+    //class for json deserialization from gitlab api
+    public class GitlabApiResponse
     {
-        //unused
-        public class GitlabApiData
-        {
-            public CommitData[] GitlabCommits { get; set; }
-        }
-
         public class CommitData
         {
             public string id { get; set; }

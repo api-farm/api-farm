@@ -52,6 +52,12 @@ namespace ApiFarm
             Log.Debug("Start!");
             var result = new List<MarkdownData>();
 
+            var lastCommit = await GitlabApiRequest.GetLastCommitFromGitlabProject();
+            if (string.IsNullOrEmpty(lastCommit))
+            {
+                
+            }
+
             var downloadResult = await DownloadZip();
             if (!downloadResult.DownloadedSuccessfully)
             {
@@ -168,7 +174,7 @@ namespace ApiFarm
                 var directory = Path.Combine(FileSavePath, DateTime.Now.ToString("yyyy.MM.dd HH-mm"));
 
                 //todo do not download files if data with last commit already downloaded
-                var uniqString = await YetAnotherClassName.GetLastCommitFromGitlabProject();
+                var uniqString = await GitlabApiRequest.GetLastCommitFromGitlabProject();
                 if (string.IsNullOrEmpty(uniqString))
                 {
                     uniqString = Guid.NewGuid().ToString();

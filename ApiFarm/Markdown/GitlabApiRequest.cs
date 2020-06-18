@@ -8,7 +8,7 @@ using Serilog;
 
 namespace ApiFarm
 {
-    public class YetAnotherClassName
+    public class GitlabApiRequest
     {
         private const string ApiRequest = "https://gitlab.com/api/v4/projects/18902673/repository/commits?per_page=1";
         
@@ -23,7 +23,7 @@ namespace ApiFarm
                     client.Headers.Add("Content-Type:application/json");
                     client.Headers.Add("Accept:application/json");
                     var recentCommits = await client.DownloadStringTaskAsync(client.BaseAddress);
-                    var serialized = JsonSerializer.Deserialize<List<ClassForGitlabApiResponse.CommitData>>(recentCommits);
+                    var serialized = JsonSerializer.Deserialize<List<GitlabApiResponse.CommitData>>(recentCommits);
                     return serialized.FirstOrDefault().id;
                 }
             }

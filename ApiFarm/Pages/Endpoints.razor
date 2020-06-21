@@ -1,4 +1,5 @@
 ﻿@page "/docs/morpher-ru/ws/3/{path}/{method}"
+@using Microsoft.AspNetCore.Mvc.RazorPages
 
 <h1>@Method /@Path</h1>
 
@@ -18,8 +19,10 @@
     protected override async Task OnInitializedAsync()
     {
         var md = await MarkdownDownloaderSingleton.Instance;
-
-        var targetMd = md.MarkdownData.Where(v => v.filePath.Contains(Path) && v.filePath.Contains(Method));
-        HtmlFromEndpoints = targetMd.FirstOrDefault()?.html;
+        await md.GetActualData();
+        var targetMd = md.MarkdownData.Content
+            .Where(v => v.IsEndpoint && v.FilePath.Contains(Path) && v.FilePath.Contains(Method));
+        //var pageasd = Page;
+        HtmlFromEndpoints = targetMd.FirstOrDefault()?.Html;
     }
 }

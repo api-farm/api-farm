@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Markdig;
 using Serilog;
@@ -12,104 +13,175 @@ namespace ApiFarm
 {
     public class MarkdownDownloaderSingleton
     {
-        private static readonly Task<MarkdownDownloaderSingleton> _getInstanceTask = CreateSingleton();
-        
         //url for gitlab proj file
         private const string GithubUrlZip = @"https://gitlab.com/api-farm/docs/-/archive/master/docs-master.zip";
         
         //folder for saving docs cache
         private const string FileSavePath = @"api-farm-docs";
 
+        public const string LogPrefix = "[MarkdownFromGitlab]"; 
+
+        private const int UpdateCheckIntervalMinutes = 1;
+
+        private static readonly Task<MarkdownDownloaderSingleton> _getInstanceTask = CreateSingleton();
         public static Task<MarkdownDownloaderSingleton> Instance
         {
             get { return _getInstanceTask; }
         }
 
-        private MarkdownDownloaderSingleton(List<MarkdownData> markdownData)
+        private MarkdownDownloaderSingleton(MarkdownData markdownData)
         {
             MarkdownData = markdownData;
         }
 
-        public List<MarkdownData> MarkdownData { get; private set; }
+        public MarkdownData MarkdownData { get; private set; } = null;
 
         private static async Task<MarkdownDownloaderSingleton> CreateSingleton()
         {
-            List<MarkdownData> markdownData = await LoadData();
+            MarkdownData markdownData = await LoadData();
             return new MarkdownDownloaderSingleton(markdownData);
         }
 
-        public async Task ReloadData()
+        public async Task GetActualData()
         {
-            this.MarkdownData = await LoadData();
+            var shouldBeUpdatedDataIsNull = MarkdownData == null;
+            var shouldBeUpdatedContent = MarkdownData?.Content?.Any() == null;
+            var shouldBeUpdatedTime = MarkdownData != null && Math.Abs((DateTime.Now - MarkdownData.LastUpdate).TotalMinutes) > UpdateCheckIntervalMinutes;
+          
+            Log.Warning($"{LogPrefix} Data should be updated: D:{shouldBeUpdatedDataIsNull}  C:{shouldBeUpdatedContent}  T:{shouldBeUpdatedTime}");
+            if (shouldBeUpdatedDataIsNull || shouldBeUpdatedTime || shouldBeUpdatedContent)
+            {
+                Log.Debug($"{LogPrefix} Updating");
+                MarkdownData = await LoadData();
+            }
         }
 
         /// <summary>
         /// Downloading files from github, converting to html.
         /// </summary>
         /// <returns></returns>
-        private static async Task<List<MarkdownData>> LoadData()
+        private static async Task<MarkdownData> LoadData()
         {
-            Log.Debug("Start!");
-            var result = new List<MarkdownData>();
+            Log.Debug($"{LogPrefix} Start!");
 
             var lastCommit = await GitlabApiRequest.GetLastCommitFromGitlabProject();
-            if (string.IsNullOrEmpty(lastCommit))
+            var dataDirectory = "";
+            
+            if (!string.IsNullOrEmpty(lastCommit))
             {
+                var directory = Path.Combine(FileSavePath);
+                Log.Debug($"{LogPrefix} Searching for last commit(\"{lastCommit}\") data in folder \"{directory}\"");
+                var lastCommitDataFound = Directory.GetDirectories(directory).FirstOrDefault(v => v.Contains(lastCommit));
                 
+                if (!string.IsNullOrEmpty(lastCommitDataFound))
+                {
+                    Log.Debug($"{LogPrefix} Commit data in folder found: \"{lastCommitDataFound}\"");
+                    dataDirectory = lastCommitDataFound;
+                }
+                else
+                {
+                    Log.Debug($"{LogPrefix} Commit data in folder not found");
+                }
             }
 
-            var downloadResult = await DownloadZip();
+            var dataAlreadyDownloaded = !string.IsNullOrEmpty(dataDirectory);
+            Log.Debug($"{LogPrefix} Last commit data already downloaded? {dataAlreadyDownloaded}");
+            if (!dataAlreadyDownloaded)
+            {
+                lastCommit = string.IsNullOrEmpty(lastCommit) ? new Guid().ToString() : lastCommit;
+                var downloadResult = await DownloadDataFromGitlab(lastCommit);
+                if (!string.IsNullOrEmpty(downloadResult))
+                {
+                    Log.Debug($"{LogPrefix} Downloaded data from gitlab: \"{downloadResult}\"");
+                    dataDirectory = downloadResult;
+                }
+            }
+
+            if (string.IsNullOrEmpty(dataDirectory))
+            {
+                Log.Error($"{LogPrefix} Something went wrong, data dir not found: \"{dataDirectory}\"");
+                return new MarkdownData();
+            }
+
+            var getMdFiles = GetMarkdownFiles(dataDirectory);
+            getMdFiles.LastUpdate = DateTime.Now;
+            getMdFiles.CommitId = lastCommit;
+            Log.Debug($"{LogPrefix} Complete!");
+
+            return getMdFiles;
+        }
+
+        private static async Task<string> DownloadDataFromGitlab(string lastCommit)
+        {
+            Log.Debug($"{LogPrefix} Downloading commit data");
+            var downloadResult = await DownloadZip(lastCommit);
             if (!downloadResult.DownloadedSuccessfully)
             {
-                Log.Error($"Failed to download file.");
-                return result;
+                Log.Error($"{LogPrefix} Failed to download file.");
+                return null;
             }
 
             var unpackResult = UnpackZip(downloadResult.FileFullName);
             if (!unpackResult.UnpackedSuccessfully)
             {
-                Log.Error($"Failed to unpack file.");
-                return result;
+                Log.Error($"{LogPrefix} Failed to unpack file.");
+                return null;
             }
-
-            var getMdFiles = GetMarkdownFiles(unpackResult.UnpackedDirectory);
-
-            // foreach (var VARIABLE in getMdFiles)
-            // {
-            //     Log.Warning(VARIABLE.filePath);
-            // }
-
-            Log.Debug("Complete!");
-
-            return getMdFiles;
+            return unpackResult.UnpackedDirectory;
         }
+        
+        private static readonly Regex RegexPatternEndpoint = new Regex(@"\\(POST|GET|DELETE|PUT)\\");
+        private static readonly Regex RegexPatternFunction = new Regex(@"morpher.ru\\ws\\3");
+        private static readonly Regex RegexPatternJustInfoPage = new Regex(@"");
 
-        private static List<MarkdownData> GetMarkdownFiles(string directoryName)
+        private static MarkdownData GetMarkdownFiles(string directoryName)
         {
-            Log.Debug($"Getting markdown files: {directoryName}");
+            Log.Debug($"{LogPrefix} Getting markdown files: {directoryName}");
 
             var files = GetFilesInDir(directoryName, "*.md");
+            
+            var result = new MarkdownData();
 
-            var markdownData = new List<MarkdownData>();
+            result.Content = new List<MarkdownContent>();
 
             foreach (string file in files)
             {
                 var htmlString = GetHtmlFromMarkdown(file);
                 if (string.IsNullOrEmpty(htmlString)) continue;
-                var data = new MarkdownData
+                var data = new MarkdownContent()
                 {
-                    filePath = file,
-                    html = htmlString,
+                    FilePath = file,
+                    Html = htmlString,
                 };
-                markdownData.Add(data);
+
+                if (RegexPatternEndpoint.Match(file).Success)
+                {
+                    data.IsEndpoint = true;
+                }
+                else if (RegexPatternFunction.Match(file).Success)
+                {
+                    data.IsFunction = true;
+                }
+                else if (RegexPatternJustInfoPage.Match(file).Success)
+                {
+                    data.IsJustInfoPage = true;
+                }
+                else
+                {
+                    data.IsJustInfoPage = true;
+                }
+                
+                
+                
+                result.Content.Add(data);
             }
 
-            if (!markdownData.Any())
+            if (!result.Content.Any())
             {
-                Log.Error($"Failed to find markdown files: {directoryName}");
+                Log.Error($"{LogPrefix} Failed to find markdown files: {directoryName}");
             }
 
-            return markdownData;
+            return result;
         }
 
         private static string GetHtmlFromMarkdown(string pathToFile)
@@ -122,8 +194,8 @@ namespace ApiFarm
             }
             catch (Exception e)
             {
-                Log.Error($"Failed to get HTML from: {pathToFile}");
-                Log.Error($"{e}");
+                Log.Error($"{LogPrefix} Failed to get HTML from: {pathToFile}");
+                Log.Error($"{LogPrefix} {e}");
                 return null;
             }
         }
@@ -136,8 +208,8 @@ namespace ApiFarm
             }
             catch (Exception e)
             {
-                Log.Error($"Failed to get files in directory: {directoryName}");
-                Log.Error($"{e}");
+                Log.Error($"{LogPrefix} Failed to get files in directory: {directoryName}");
+                Log.Error($"{LogPrefix} {e}");
                 return new List<string>();
             }
         }
@@ -148,7 +220,7 @@ namespace ApiFarm
             {
                 if (!File.Exists(fileFullName))
                 {
-                    Log.Error($"File doesn't exist: {fileFullName}");
+                    Log.Error($"{LogPrefix} File doesn't exist: {fileFullName}");
                     return (false, null);
                 }
 
@@ -159,28 +231,21 @@ namespace ApiFarm
             }
             catch (Exception e)
             {
-                Log.Error($"Failed to unpack zip: {fileFullName}");
-                Log.Error($"{e}");
+                Log.Error($"{LogPrefix} Failed to unpack zip: {fileFullName}");
+                Log.Error($"{LogPrefix} {e}");
                 return (false, null);
             }
         }
 
-        private static async Task<(bool DownloadedSuccessfully, string FileFullName)> DownloadZip()
+        private static async Task<(bool DownloadedSuccessfully, string FileFullName)> DownloadZip(string lastCommit)
         {
             try
             {
-                Log.Debug($"Downloading file from: \"{GithubUrlZip}\"");
+                Log.Debug($"{LogPrefix} Downloading file from: \"{GithubUrlZip}\"");
                 using var webClient = new WebClient();
                 var directory = Path.Combine(FileSavePath, DateTime.Now.ToString("yyyy.MM.dd HH-mm"));
 
-                //todo do not download files if data with last commit already downloaded
-                var uniqString = await GitlabApiRequest.GetLastCommitFromGitlabProject();
-                if (string.IsNullOrEmpty(uniqString))
-                {
-                    uniqString = Guid.NewGuid().ToString();
-                }
-
-                var directoryWithGuid = Path.Combine(directory + " " + uniqString);
+                var directoryWithGuid = Path.Combine(directory + " " + lastCommit);
                 if (!Directory.Exists(directoryWithGuid))
                 {
                     Directory.CreateDirectory(directoryWithGuid);
@@ -193,8 +258,8 @@ namespace ApiFarm
             }
             catch (Exception e)
             {
-                Log.Error($"Failed to download file: {GithubUrlZip}");
-                Log.Error($"{e}");
+                Log.Error($"{LogPrefix} Failed to download file: {GithubUrlZip}");
+                Log.Error($"{LogPrefix} {e}");
                 return (true, null);
             }
         }

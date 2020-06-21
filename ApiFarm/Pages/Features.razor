@@ -66,9 +66,11 @@
     protected override async Task OnInitializedAsync()
     {
         var md = await MarkdownDownloaderSingleton.Instance;
-
-        var targetMd = md.MarkdownData.Where(v => v.filePath.Contains(Feature));
-        HtmlFromFeatures = targetMd.FirstOrDefault()?.html;
+        await md.GetActualData();
+        var targetMd = md.MarkdownData.Content
+            .Where(v => v.IsFunction && v.FilePath.Contains(Feature));
+        
+        HtmlFromFeatures = targetMd.FirstOrDefault()?.Html;
     }
 }
 

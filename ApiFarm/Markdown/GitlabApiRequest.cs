@@ -26,14 +26,14 @@ namespace ApiFarm
                     var recentCommits = await client.DownloadStringTaskAsync(client.BaseAddress);
                     var serialized = JsonSerializer.Deserialize<List<GitlabApiResponse.CommitData>>(recentCommits);
                     var lastCommitFound = serialized.FirstOrDefault()?.id;
-                    Log.Debug($"{MarkdownDownloaderSingleton.LogPrefix} Last commit found? {lastCommitFound != null}");
+                    Log.Debug($"{MarkdownDownloaderSingleton.LogPrefix} Last commit found in Gitlab? {lastCommitFound != null}");
                     return lastCommitFound;
                 }
             }
             catch (Exception e)
             {
                 Log.Error($"{MarkdownDownloaderSingleton.LogPrefix} Failed to get Gitlab commit info.");
-                return null;
+                return "";
             }
         }
     }

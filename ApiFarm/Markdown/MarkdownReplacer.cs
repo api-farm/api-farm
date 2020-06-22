@@ -38,7 +38,7 @@ namespace ApiFarm
 
         private static async Task<MarkdownDownloaderSingleton> CreateSingleton()
         {
-            MarkdownData markdownData = await LoadData();
+            MarkdownData markdownData = await LoadData("", true);
             return new MarkdownDownloaderSingleton(markdownData);
         }
 
@@ -51,8 +51,22 @@ namespace ApiFarm
             Log.Warning($"{LogPrefix} Data should be updated: D:{shouldBeUpdatedDataIsNull}  C:{shouldBeUpdatedContent}  T:{shouldBeUpdatedTime}");
             if (shouldBeUpdatedDataIsNull || shouldBeUpdatedTime || shouldBeUpdatedContent)
             {
-                Log.Debug($"{LogPrefix} Updating");
-                MarkdownData = await LoadData();
+                var lastCommit = await GitlabApiRequest.GetLastCommitFromGitlabProject();
+                var dataIsActual = MarkdownData?.CommitId == lastCommit;
+                Log.Debug($"{LogPrefix} Data is actual? {dataIsActual}");
+                if (!dataIsActual)
+                {
+                    Log.Debug($"{LogPrefix} Updating data! {lastCommit}");
+                    MarkdownData = await LoadData(lastCommit);
+                }
+                else
+                {
+                    if (MarkdownData != null)
+                    {
+                        Log.Debug($"{LogPrefix} Updating last update time.");
+                        MarkdownData.LastUpdate = DateTime.Now;
+                    }
+                }
             }
         }
 
@@ -60,55 +74,68 @@ namespace ApiFarm
         /// Downloading files from github, converting to html.
         /// </summary>
         /// <returns></returns>
-        private static async Task<MarkdownData> LoadData()
+        private static async Task<MarkdownData> LoadData(string lastCommit = "", bool forceReload = false)
         {
             Log.Debug($"{LogPrefix} Start!");
-
-            var lastCommit = await GitlabApiRequest.GetLastCommitFromGitlabProject();
-            var dataDirectory = "";
-            
-            if (!string.IsNullOrEmpty(lastCommit))
+            //just some foolproof stuff
+            try
             {
-                var directory = Path.Combine(FileSavePath);
-                Log.Debug($"{LogPrefix} Searching for last commit(\"{lastCommit}\") data in folder \"{directory}\"");
-                var lastCommitDataFound = Directory.GetDirectories(directory).FirstOrDefault(v => v.Contains(lastCommit));
+                var dataDirectory = "";
+                if (forceReload)
+                {
+                    lastCommit = await GitlabApiRequest.GetLastCommitFromGitlabProject();
+                }
                 
-                if (!string.IsNullOrEmpty(lastCommitDataFound))
+                if (!string.IsNullOrEmpty(lastCommit))
                 {
-                    Log.Debug($"{LogPrefix} Commit data in folder found: \"{lastCommitDataFound}\"");
-                    dataDirectory = lastCommitDataFound;
+                    var directory = Path.Combine(FileSavePath);
+                    Log.Debug($"{LogPrefix} Searching for last commit(\"{lastCommit}\") data in folder \"{directory}\"");
+                    var lastCommitDataFound = Directory.GetDirectories(directory).FirstOrDefault(v => v.Contains(lastCommit));
+                    
+                    if (!string.IsNullOrEmpty(lastCommitDataFound))
+                    {
+                        Log.Debug($"{LogPrefix} Commit data in folder found: \"{lastCommitDataFound}\"");
+                        dataDirectory = lastCommitDataFound;
+                    }
+                    else
+                    {
+                        Log.Debug($"{LogPrefix} Commit data in folder not found");
+                    }
                 }
-                else
-                {
-                    Log.Debug($"{LogPrefix} Commit data in folder not found");
-                }
-            }
 
-            var dataAlreadyDownloaded = !string.IsNullOrEmpty(dataDirectory);
-            Log.Debug($"{LogPrefix} Last commit data already downloaded? {dataAlreadyDownloaded}");
-            if (!dataAlreadyDownloaded)
-            {
-                lastCommit = string.IsNullOrEmpty(lastCommit) ? new Guid().ToString() : lastCommit;
-                var downloadResult = await DownloadDataFromGitlab(lastCommit);
-                if (!string.IsNullOrEmpty(downloadResult))
+                var dataAlreadyDownloaded = !string.IsNullOrEmpty(dataDirectory);
+                Log.Debug($"{LogPrefix} Last commit data already downloaded? {dataAlreadyDownloaded}");
+                if (!dataAlreadyDownloaded)
                 {
-                    Log.Debug($"{LogPrefix} Downloaded data from gitlab: \"{downloadResult}\"");
-                    dataDirectory = downloadResult;
+                    lastCommit = string.IsNullOrEmpty(lastCommit) ? Guid.NewGuid().ToString() : lastCommit;
+                    var downloadResult = await DownloadDataFromGitlab(lastCommit);
+                    if (!string.IsNullOrEmpty(downloadResult))
+                    {
+                        Log.Debug($"{LogPrefix} Downloaded data from gitlab: \"{downloadResult}\"");
+                        dataDirectory = downloadResult;
+                    }
                 }
-            }
 
-            if (string.IsNullOrEmpty(dataDirectory))
+                if (string.IsNullOrEmpty(dataDirectory))
+                {
+                    Log.Error($"{LogPrefix} Something went wrong, data dir not found: \"{dataDirectory}\"");
+                    return new MarkdownData();
+                }
+
+                var getMdFiles = GetMarkdownFiles(dataDirectory);
+                Log.Debug($"{LogPrefix} Md files found: {getMdFiles.Content.Count}");
+                getMdFiles.LastUpdate = DateTime.Now;
+                getMdFiles.CommitId = lastCommit;
+                Log.Debug($"{LogPrefix} Complete!");
+
+                return getMdFiles;
+            }
+            catch (Exception e)
             {
-                Log.Error($"{LogPrefix} Something went wrong, data dir not found: \"{dataDirectory}\"");
+                Log.Error($"{LogPrefix} LoadData, something went wrong.");
+                Log.Error($"{e}");
                 return new MarkdownData();
             }
-
-            var getMdFiles = GetMarkdownFiles(dataDirectory);
-            getMdFiles.LastUpdate = DateTime.Now;
-            getMdFiles.CommitId = lastCommit;
-            Log.Debug($"{LogPrefix} Complete!");
-
-            return getMdFiles;
         }
 
         private static async Task<string> DownloadDataFromGitlab(string lastCommit)

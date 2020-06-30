@@ -1,0 +1,28 @@
+﻿@page "/docs/morpher-ru/ws/1/{path}/{method}"
+@using Microsoft.AspNetCore.Mvc.RazorPages
+
+<h1>@Method /@Path</h1>
+
+@((MarkupString) HtmlFromEndpoints)
+@* https://localhost:5001/docs/morpher-ru/ws/3/russian/declension *@
+
+@code {
+
+    [Parameter]
+    public string Path { get; set; }
+
+    [Parameter]
+    public string Method { get; set; }
+
+    public string HtmlFromEndpoints = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var md = await MarkdownDownloaderSingleton.Instance;
+        await md.GetActualData();
+        var targetMd = md.MarkdownData.Content
+            .Where(v => v.IsEndpoint && v.FilePath.Contains(Path) && v.FilePath.Contains(Method));
+        //var pageasd = Page;
+        HtmlFromEndpoints = targetMd.FirstOrDefault()?.Html;
+    }
+}
